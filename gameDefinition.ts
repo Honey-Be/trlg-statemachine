@@ -63,7 +63,6 @@ export type GameContext = {
     lottoTriesCountCache: 0|1|2|3;
     lottoCache: "ongoing" | "lost" | "won" | null;
     doubleLotto: boolean | null;
-    gameId: string;
     dicesSecondary: [DiceType, DiceType] | null;
 }
 

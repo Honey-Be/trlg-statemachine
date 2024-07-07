@@ -1,4 +1,4 @@
-import { setup, assign, and } from "xstate"
+import { setup, assign, and, createActor } from "xstate"
 import { CELLS, CELLS_COUNT, CITY_GROUPS, Cell, CityGroupType, CityLocationType, DiceType, GameContext, LandPropertyStatus, LottoChoiceType, TRANSIT_TARGETS, BuildableLocationType, _CITY_GROUPS, randomDices, BUILDABLE_LOCATIONS, TicketsType } from "./gameDefinition";
 import { caculateLandPropsPriceTotal, go, move, payToGovernment, payToMarket, purchase } from "./ruleDefinition.js";
 import { tupleMap } from "./utils";
@@ -290,7 +290,6 @@ const machine = setup({
         freshChanceCardCache: null,
         lottoTriesCountCache: 0,
         doubleLotto: null,
-        gameId: "",
         lottoCache: null
     },
     initial: 'turnBegin',
@@ -2226,4 +2225,3 @@ const machine = setup({
         }
     }
 })
-
