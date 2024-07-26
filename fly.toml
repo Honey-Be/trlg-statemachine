@@ -1,0 +1,26 @@
+# fly.toml app configuration file generated for debconf24-bof-trlg-backend on 2024-07-26T20:00:21+09:00
+#
+# See https://fly.io/docs/reference/configuration/ for information about how to use this file.
+#
+
+app = 'debconf24-bof-trlg-backend'
+primary_region = 'nrt'
+
+[env]
+  UPSTASH_REDIS_REST_URL='https://probable-beetle-55626.upstash.io'
+  UPSTASH_REDIS_REST_TOKEN='eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6ImNsaWVudF8yampWV0tLdzBqd3NxbEtPNGFEalowcEtvanIiLCJyb3RhdGluZ190b2tlbiI6Ind3OWNxdjNlN2FvZjRzZTZuMTJjdm0wbm81cDFlNGdlaGtyOGNudGEifQ.pR6HxSIC3jIwXCyZ8FAoejCb37tV2zpb3Nadsqjx_1eFFTy-KDsUfcDe_1iQflAeKw__62ZGGkVEPmn-aYAadiC2xX2YwJ9IQAUd6_UC82V_Hi5hoGeAoZAc1OMt2P2h7brmC9jvVH2vmphxvEADoKmxIJW-IUeDDQ-eRZ0Tpya3ZnD1KHzV4FTbbl_OUdcceHO5MUQ-TWyONodWrf7sWQiFNxZyqk2rhYVf3Q24wE5sh_7IqZaxvdVDpxeEmIC0KE3n5IBkpN8cdt6A6g9bQngytKoY-AuV_9Fsqv-oGCQZSrub7xR7ElZoE64bJjfEUqu_nmCdHoIBZ7qaXHGnvw'
+
+[build]
+
+[http_service]
+  internal_port = 11000
+  force_https = true
+  auto_stop_machines = 'stop'
+  auto_start_machines = true
+  min_machines_running = 0
+  processes = ['app']
+
+[[vm]]
+  memory = '2gb'
+  cpu_kind = 'shared'
+  cpus = 2

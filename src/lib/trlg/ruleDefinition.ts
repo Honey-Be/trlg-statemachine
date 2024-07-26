@@ -1,4 +1,4 @@
-import { BuildableLocationType, CELLS, CELLS_COUNT, CITY_GROUPS, CityGroupType, CityLocationType, DiceType, GameContext, LandPropertyStatus, PlayerStatus, _CITY_GROUPS, getGroupPrice } from "./gameDefinition";
+import { type BuildableLocationType, CELLS_COUNT, CITY_GROUPS, type CityLocationType, type DiceType, type GameContext, type LandPropertyStatus, type PlayerStatus, _CITY_GROUPS, getGroupPrice } from "./gameDefinition";
 import { tupleMap } from "./utils";
 
 function selectInsert(oldPlayers: [PlayerStatus, PlayerStatus, PlayerStatus, PlayerStatus], newPlayer: PlayerStatus, turnNow: 0|1|2|3): [PlayerStatus, PlayerStatus, PlayerStatus, PlayerStatus] {

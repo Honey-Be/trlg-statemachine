@@ -1,6 +1,6 @@
 import { BiMap } from "@rimbu/core";
-import { Tuple, circularPushMap, concatAll, concatAllReadonly, contains, equalSet, product, productLiteral, productLiteralFMap } from "./utils";
-import { ChanceCardKindType } from "./gameutils";
+import { circularPushMap, contains, equalSet } from "./utils";
+import { type ChanceCardKindType } from "./gameutils";
 
 export type TicketsType = {
     feeExemption: number;
@@ -30,6 +30,8 @@ export type LandPropertyStatus = {
 export const DICES = [1,2,3,4,5,6] as const
 
 export type DiceType = typeof DICES[number]
+
+export type JailTurnType =  "byLawyer" | "byDice" | "byCash" | false
 
 export const DICES_SUMS_LOOKUP = {
     1: { 1: 2, 2: 3, 3: 4, 4: 5, 5: 6, 6: 7} ,
@@ -64,9 +66,11 @@ export type GameContext = {
     lottoCache: "ongoing" | "lost" | "won" | null;
     doubleLotto: boolean | null;
     dicesSecondary: [DiceType, DiceType] | null;
+    feeCache: number;
+    maxPurchasableAmountCache: number;
+    wonLotto: number|null;
+    jailTurnResultCache: JailTurnType | null;
 }
-
-export type TriggerType = "buy" | "sell" | "pick" | "payment" | "paymentOwned" | "imprison" | "transport" | "nothing" | "roll";
 
 export type SALARY = 3000000
 export type TAXES = 1000000
@@ -211,13 +215,15 @@ if (!equalSet(DEFINED_LOCATIONS, ALL_LOCATIONS)) {
     throw new Error("There are some undefined cells :(")
 }
 
+const CL = Array.from<number>(CITY_LOCATIONS)
+
 const COASTAL_CITIES = new Set([2, 4, 8, 17, 25, 26, 30, 43, 48, 49, 51])
-if (contains(COASTAL_CITIES,CITY_LOCATIONS)) {
+if (!contains(COASTAL_CITIES,CL)) {
     throw new Error("'isCoastal' can only be defined for cities :(")
 }
 
 const MEGACITIES = new Set([53, 51, 48, 47, 34, 33, 30, 17, 29, 32])
-if (contains(MEGACITIES,CITY_LOCATIONS)) {
+if (!contains(MEGACITIES,CL)) {
     throw new Error("'isMegacity' can only be defined for cities :(")
 }
 
@@ -351,5 +357,6 @@ export function isMegacity(loc: number) {
 
 export type LottoChoiceType = "bothOdd" | "oddEven" | "bothEven"
 
-export const BUILDABLE_LOCATIONS = [...CITY_LOCATIONS, ...INDUSTRIALS] as const
-export type BuildableLocationType = typeof BUILDABLE_LOCATIONS[number]
+const _BUILDABLE_LOCATIONS = [...CITY_LOCATIONS, ...INDUSTRIALS] as const
+export const BUILDABLE_LOCATIONS = _BUILDABLE_LOCATIONS.map((loc) => loc as number)
+export type BuildableLocationType = typeof _BUILDABLE_LOCATIONS[number]

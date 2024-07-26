@@ -1,7 +1,7 @@
-import { CELLS_COUNT, GameContext, LandPropertyStatus, PlayerStatus, TicketsType } from "./gameDefinition";
-import { LandPropSaleType } from "./gameutils";
+import { CELLS_COUNT, type GameContext, type LandPropertyStatus, type PlayerStatus, type TicketsType } from "./gameDefinition";
+import { type LandPropSaleType } from "./gameutils";
 import { getCityLandFee, payToGovernment } from "./ruleDefinition";
-import { Tuple, tupleMap } from "./utils";
+import { type Tuple, tupleMap } from "./utils";
 
 export function needFund(context: GameContext): GameContext['mainStatuses'] {
     const {
@@ -262,5 +262,34 @@ export function sell(context: GameContext, targets: LandPropSaleType[], fee: num
         }
     } else {
         return context.mainStatuses
+    }
+}
+
+export function distributePayment({mainStatuses, nowPid}: GameContext, oneThird: number): typeof mainStatuses {
+    const new_players = [...([0,1,2,3] as const).map((idx) => {
+        if(idx === nowPid) {
+            return mainStatuses.players[idx]
+        } else {
+            const {
+                cash,
+                location,
+                remaining,
+                cycle,
+                univEducation
+            } = mainStatuses.players[idx]
+            return {
+                cash: cash + oneThird,
+                location,
+                remaining,
+                cycle,
+                univEducation
+            }
+        }
+    })] as typeof mainStatuses.players
+    return {
+        players: new_players,
+        landProperties: new Map(mainStatuses.landProperties),
+        govIncome: mainStatuses.govIncome,
+        cashCache: mainStatuses.cashCache
     }
 }

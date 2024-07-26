@@ -1,5 +1,5 @@
 import { destroyEachBuildingForTargets, earnMoney, educate, getTicket, loseMoney, sell, warpTo } from "./actions"
-import { BuildableLocationType, DICES_SUMS_LOOKUP, DiceType, DicesSumType, GameContext, HOSPITAL_LOCATION, JAIL_LOCATION, LandPropertyStatus, TicketsType, UNIVERSITY_LOCATION, getInfraLocation, isCoastal } from "./gameDefinition"
+import { type BuildableLocationType, DICES_SUMS_LOOKUP, type DiceType, type DicesSumType, type GameContext, HOSPITAL_LOCATION, JAIL_LOCATION, type LandPropertyStatus, type TicketsType, UNIVERSITY_LOCATION, getInfraLocation, isCoastal } from "./gameDefinition"
 import { roundUnit, tupleMap } from "./utils"
 
 
@@ -39,7 +39,7 @@ const NEEDS_CHECK_CHANCE_CARD_KINDS = [
     "fakeNews",
     "voicePhishing",
     "trafficAccident",
-]
+] as const
 const SIDECAR_CHANCE_CARD_KINDS = [
     "catastrophe",
     "pandemic"

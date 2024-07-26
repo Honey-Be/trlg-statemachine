@@ -1,42 +1,42 @@
-import { setup, assign, and, createActor } from "xstate"
-import { CELLS, CELLS_COUNT, CITY_GROUPS, Cell, CityGroupType, CityLocationType, DiceType, GameContext, LandPropertyStatus, LottoChoiceType, TRANSIT_TARGETS, BuildableLocationType, _CITY_GROUPS, randomDices, BUILDABLE_LOCATIONS, TicketsType } from "./gameDefinition";
-import { caculateLandPropsPriceTotal, go, move, payToGovernment, payToMarket, purchase } from "./ruleDefinition.js";
-import { tupleMap } from "./utils";
-import { commitCache, earnMoney, educate, imprison, jailAction, loseMoney, needBasicIncome, needFund, payCityLandFee, payIndustrialLandFee, sell } from "./actions";
-import { ChanceCardKindType, LandPropSaleType, NEEDS_CHECK_CHANCE_CARDS, NORMAL_CHANCE_CARDS, NeedsCheckChanceCardKindType, SIDECAR_CHANCE_CARDS, bankruptcyCheck, basicIncomeCheck, fundCheck, getHelpFromBasicIncomeGeneral, getHelpFromFundGeneral, getTargetPid, randomChance, simplyLosingMoneyCheck, swapCash, swapLandProperties, useOneTicket } from "./gameutils";
+import { setup, assign } from "xstate"
+import {
+    CELLS, CELLS_COUNT,
+    type Cell, type CityGroupType, type CityLocationType, type DiceType,
+    type GameContext, type LandPropertyStatus, type LottoChoiceType, TRANSIT_TARGETS, type BuildableLocationType,
+    _CITY_GROUPS, randomDices, BUILDABLE_LOCATIONS,
+    type TicketsType } from "./gameDefinition";
+import { caculateLandPropsPriceTotal, go, move, payToGovernment, payToMarket, purchase } from "./ruleDefinition";
+import { copyMainStatuses, tupleMap } from "./utils";
+import {
+    commitCache, distributePayment, earnMoney, educate, imprison, jailAction,
+    needBasicIncome, needFund, payCityLandFee, payIndustrialLandFee, sell
+} from "./actions";
+import {
+    type ChanceCardKindType, type LandPropSaleType, NEEDS_CHECK_CHANCE_CARDS, NORMAL_CHANCE_CARDS,
+    type NeedsCheckChanceCardKindType, SIDECAR_CHANCE_CARDS, bankruptcyCheck, basicIncomeCheck,
+    fundCheck, getHelpFromBasicIncomeGeneral, getHelpFromFundGeneral, getTargetPid,
+    randomChance, simplyLosingMoneyCheck, swapCash, swapLandProperties, useOneTicket } from "./gameutils";
 
+export type EventType = {type: "purchase", value: {amount: number}}
+    | {type: "sell", targets: LandPropSaleType[]}
+    | {type: "nop"} //
+    | {type: "rollDice"} //
+    | {type: "thanksToLawyer"} //
+    | {type: "showMeTheMONEY"} //
+    | {type: "pickTargetPlayer"} //
+    | {type: "pickTargetLocation", targetLocation: number} //
+    | {type: "pickTargetGroup", targetGroupId: CityGroupType} //
+    | {type: "tryLotto", choice: LottoChoiceType} //
+    | {type: "stopLotto"} //
+    | {type: "useTicket"} // 
+    | {type: "startLotto", useDoubleLottoTicket: boolean} //
+    | {type: "pickTargetsPair", my: CityLocationType, others: CityLocationType} //
+    | {type: "noticeChecked"} //
 
-
-const machine = setup({
+export const machine = setup({
     types: {
         context: {} as GameContext,
-        events: {} as
-            | {type: "check"}
-            | {type: "purchase", value: {amount: number}}
-            | {type: "sell", targets: LandPropSaleType[]}
-            | {type: "pickCard"}
-            | {type: "pay"}
-            | {type: "payBuilt"}
-            | {type: "trans"}
-            | {type: "nop"}
-            | {type: "rollDice"}
-            | {type: "go"}
-            | {type: "destinationArrival"}
-            | {type: "payLandFee"}
-            | {type: "payTax"}
-            | {type: "payForRelease"}
-            | {type: "showMeTheMONEY"}
-            | {type: "initialize"}
-            | {type: "getChanceCard"}
-            | {type: "checkChanceCard"}
-            | {type: "pickTargetPlayer"}
-            | {type: "pickTargetLocation", targetLocation: number}
-            | {type: "pickTargetGroup", targetGroupId: CityGroupType}
-            | {type: "tryLotto", choice: LottoChoiceType}
-            | {type: "stopLotto"}
-            | {type: "useTicket"}
-            | {type: "startLotto", useDoubleLottoTicket: boolean}
-            | {type: "pickTargetsPair", my: CityLocationType, others: CityLocationType}
+        events: {} as EventType
     },
     guards: {
         purchasable({context}, {nowTurn}: {nowTurn: 0|1|2|3| undefined} ) {
@@ -195,8 +195,9 @@ const machine = setup({
             return (players[nowPid].remaining.tickets[ticketType] > 0)
         },
         mustStopLotto({context}) {
-            const {nowPid, mainStatuses: {players}} = context
-            return (context.lottoCache === "ongoing") && (players[nowPid].cash < 200000)
+            const {nowPid, mainStatuses: {players, cashCache}} = context
+            const cash = cashCache ?? players[nowPid].cash
+            return (context.lottoCache === "ongoing") && (cash < 200000)
         }
     }
 }).createMachine({
@@ -290,7 +291,11 @@ const machine = setup({
         freshChanceCardCache: null,
         lottoTriesCountCache: 0,
         doubleLotto: null,
-        lottoCache: null
+        lottoCache: null,
+        feeCache: 0,
+        maxPurchasableAmountCache: 0,
+        wonLotto: null,
+        jailTurnResultCache: null
     },
     initial: 'turnBegin',
     states: {
@@ -317,27 +322,30 @@ const machine = setup({
                             govIncome,
                             cashCache
                         }
-                    }
-                })
-            },
-            on: {
-                check: [
-                    { // jail turns remaining
-                        guard: {
-                            type: "jailRemaining",
-                            params({ context, event }) {
-                                return {
-                                    nowTurn: context.nowPid
-                                }
-                            },
-                        },
-                        target: "jailModal"
                     },
-                    { // otherwise
-                        target: "rollDiceModal"
-                    }
-                ]
+                    feeCache: (_) => 0,
+                    maxPurchasableAmountCache: (_) => 0
+                }),
+                target: "turnBeginCheck"
             }
+        },
+        turnBeginCheck: {
+            always: [
+                { // jail turns remaining
+                    guard: {
+                        type: "jailRemaining",
+                        params({ context, event }) {
+                            return {
+                                nowTurn: context.nowPid
+                            }
+                        },
+                    },
+                    target: "jailModal"
+                },
+                { // otherwise
+                    target: "rollDiceModal"
+                }
+            ]
         },
         cityArrived: { //// ** works done
             always: [
@@ -372,99 +380,113 @@ const machine = setup({
                     mainStatuses: ({context}) => {
                         return payCityLandFee(context)
                     }
-                })
+                }),
+                target: "cityPaymentCheck"
             },
-            on: {
-                check: [
-                    { // purchasable
-                        guard: {
-                            type: "purchasable",
-                            params: ({context}) => ({nowTurn: context.nowPid})
-                        },
-                        actions: assign({
-                            mainStatuses({context}) {
-                                return commitCache(context)
-                            }
-                        }),
-                        target: "purchaseModal"
+        },
+        cityPaymentCheck: {
+            always: [
+                { // purchasable
+                    guard: {
+                        type: "purchasable",
+                        params: ({context}) => ({nowTurn: context.nowPid})
                     },
-                    { // not purchasable but enough
-                        guard: {
-                            type: "notPurchasableButEnough",
-                            params: ({context}) => ({nowTurn: context.nowPid})
+                    actions: assign({
+                        mainStatuses({context}) {
+                            return commitCache(context)
                         },
-                        actions: assign({
-                            mainStatuses({context}) {
-                                let pid = context.nowPid
-                                let playerNow = context.mainStatuses.players[pid]
-                                let cash = context.mainStatuses.cashCache ?? playerNow.cash
-                                let loc = playerNow.location as BuildableLocationType
-                                let prp = context.mainStatuses.landProperties.get(loc)
-                                if ((prp === undefined) || (prp.operatorId === pid)) {
-                                    return {
-                                        ...context.mainStatuses
-                                    }
-                                } else {
-                                    return {
-                                        ...context.mainStatuses,
-                                        cashCache: cash - (prp.amount * 300000)
-                                    }
+                        maxPurchasableAmountCache({context}) {
+                            const { location, cycle } = context.mainStatuses.players[context.nowPid]
+                            const exists = context.mainStatuses.landProperties.get(location as BuildableLocationType)?.amount ?? 0
+                            return Math.max(Math.min(cycle + 1, 3) - exists, 0)
+                        }
+                    }),
+                    target: "purchaseModal"
+                },
+                { // not purchasable but enough
+                    guard: {
+                        type: "notPurchasableButEnough",
+                        params: ({context}) => ({nowTurn: context.nowPid})
+                    },
+                    actions: assign({
+                        mainStatuses({context}) {
+                            let pid = context.nowPid
+                            let playerNow = context.mainStatuses.players[pid]
+                            let cash = context.mainStatuses.cashCache ?? playerNow.cash
+                            let loc = playerNow.location as BuildableLocationType
+                            let prp = context.mainStatuses.landProperties.get(loc)
+                            if ((prp === undefined) || (prp.operatorId === pid)) {
+                                return {
+                                    ...context.mainStatuses
+                                }
+                            } else {
+                                return {
+                                    ...context.mainStatuses,
+                                    cashCache: cash - (prp.amount * 300000)
                                 }
                             }
-                        }),
-                        target: "turnEnd"
+                        }
+                    }),
+                    target: "turnEnd"
+                },
+                { // not enough money, solvable by selling property/properties
+                    guard: {
+                        type: "notEnoughMoney",
+                        params: ({context}) => ({nowTurn: context.nowPid})
                     },
-                    { // not enough money, solvable by selling property/properties
-                        guard: {
-                            type: "notEnoughMoney",
-                            params: ({context}) => ({nowTurn: context.nowPid})
+                    actions: assign({
+                        feeCache({context}) {
+                            let playerNow = context.mainStatuses.players[context.nowPid]
+                            let loc = playerNow.location as BuildableLocationType
+                            let amount = context.mainStatuses.landProperties.get(loc)?.amount as number
+                            return (amount * 300000)
+                        }
+                    }),
+                    target: "sellModal"
+                },
+                { // need fund
+                    guard: {
+                        type: "bankrupt",
+                        params: ({context}) => ({nowTurn: context.nowPid})
+                    },
+                    actions: assign({
+                        mainStatuses: ({context, event}) => {
+                            return needFund(context)
                         },
-                        target: "sellModal"
+                        fund: (_) => 0,
+                        financialWarningCache: (_) => "needFund"
+                    }),
+                    target: "turnEnd"
+                },
+                { // need basic income
+                    guard: {
+                        type: "stillBankrupt",
+                        params: ({context}) => ({nowTurn: context.nowPid})
                     },
-                    { // need fund
-                        guard: {
-                            type: "bankrupt",
-                            params: ({context}) => ({nowTurn: context.nowPid})
+                    actions: assign({
+                        mainStatuses: ({context}) => {
+                            return needBasicIncome(context)
                         },
-                        actions: assign({
-                            mainStatuses: ({context, event}) => {
-                                return needFund(context)
-                            },
-                            fund: (_) => 0,
-                            financialWarningCache: (_) => "needFund"
-                        }),
-                        target: "turnEnd"
+                        fund: (_) => 0,
+                        financialWarningCache: (_) => "needBasicIncome"
+                    }),
+                    target: "turnEnd"
+                },
+                { // unsolvable => Game ends without any winner
+                    guard: {
+                        type: "unsolvableBankrupt",
+                        params: ({context}) => ({nowTurn: context.nowPid})
                     },
-                    { // need basic income
-                        guard: {
-                            type: "stillBankrupt",
-                            params: ({context}) => ({nowTurn: context.nowPid})
-                        },
-                        actions: assign({
-                            mainStatuses: ({context}) => {
-                                return needBasicIncome(context)
-                            },
-                            fund: (_) => 0,
-                            financialWarningCache: (_) => "needBasicIncome"
-                        }),
-                        target: "turnEnd"
-                    },
-                    { // unsolvable => Game ends without any winner
-                        guard: {
-                            type: "unsolvableBankrupt",
-                            params: ({context}) => ({nowTurn: context.nowPid})
-                        },
-                        actions: assign({
-                            ending: (_) => "hasBankrupt",
-                            financialWarningCache: (_) => null
-                        }),
-                        target: "frozen"
-                    },
-                    { // keep going gameplay
-                        target: "turnEnd"
-                    }
-                ]
-            }
+                    actions: assign({
+                        ending: (_) => "hasBankrupt",
+                        financialWarningCache: (_) => null
+                    }),
+                    target: "frozen"
+                },
+                { // keep going gameplay
+                    target: "turnEnd"
+                }
+            ]
         },
         industrialArrived: { //// ** works done
             always: [
@@ -499,99 +521,124 @@ const machine = setup({
                     mainStatuses({context}) {
                         return payIndustrialLandFee(context)
                     }
-                })
-            },
-            on: {
-                check: [
-                    { // purchasable
-                        guard: {
-                            type: "purchasable",
-                            params: ({context}) => ({nowTurn: context.nowPid})
+                }),
+                target: "industrialPaymentCheck"
+            }
+        },
+        industrialPaymentCheck: {
+            always: [
+                { // purchasable
+                    guard: {
+                        type: "purchasable",
+                        params: ({context}) => ({nowTurn: context.nowPid})
+                    },
+                    actions: assign({
+                        mainStatuses({context}) {
+                            return commitCache(context)
                         },
-                        actions: assign({
-                            mainStatuses({context}) {
-                                return commitCache(context)
+                        maxPurchasableAmountCache: (_) => 1
+                    }),
+                    target: "purchaseModal"
+                },
+                { // not purchasable but enough
+                    guard: {
+                        type: "notPurchasableButEnough",
+                        params: ({context}) => ({nowTurn: context.nowPid})
+                    },
+                    actions: assign({
+                        mainStatuses({context}) {
+                            let pid = context.nowPid
+                            let playerNow = context.mainStatuses.players[pid]
+                            let cash = context.mainStatuses.cashCache ?? playerNow.cash
+                            let loc = playerNow.location as BuildableLocationType
+                            let prp = context.mainStatuses.landProperties.get(loc)
+                            if ((prp === undefined) || (prp.operatorId === pid)) {
+                                return copyMainStatuses(context.mainStatuses)
+                            } else {
+                                let output = distributePayment(context,100000)
+                                output.cashCache = cash - (prp.amount * 300000)
+                                return output
                             }
-                        }),
-                        target: "purchaseModal"
+                        }
+                    }),
+                    target: "turnEnd"
+                },
+                { // not enough money, solvable by selling property/properties
+                    guard: {
+                        type: "notEnoughMoney",
+                        params: ({context}) => ({nowTurn: context.nowPid})
                     },
-                    { // not purchasable but enough
-                        guard: {
-                            type: "notPurchasableButEnough",
-                            params: ({context}) => ({nowTurn: context.nowPid})
-                        },
-                        actions: assign({
-                            mainStatuses({context}) {
-                                let pid = context.nowPid
-                                let playerNow = context.mainStatuses.players[pid]
-                                let cash = context.mainStatuses.cashCache ?? playerNow.cash
-                                let loc = playerNow.location as BuildableLocationType
-                                let prp = context.mainStatuses.landProperties.get(loc)
-                                if ((prp === undefined) || (prp.operatorId === pid)) {
-                                    return {
-                                        ...context.mainStatuses
-                                    }
-                                } else {
-                                    return {
-                                        ...context.mainStatuses,
-                                        cashCache: cash - (prp.amount * 300000)
-                                    }
-                                }
+                    actions: assign({
+                        mainStatuses: ({context}) => distributePayment(context,100000),
+                        feeCache({context}) {
+                            return 300000
+                        }
+                    }),
+                    target: "sellModal"
+                },
+                { // need fund
+                    guard: {
+                        type: "bankrupt",
+                        params: ({context}) => ({nowTurn: context.nowPid})
+                    },
+                    actions: assign({
+                        mainStatuses: ({context, event}) => {
+                            const {
+                                mainStatuses,
+                                ...others
+                            } = context
+                            const intermediate: typeof context = {
+                                mainStatuses: needFund(context),
+                                ...others
                             }
-                        }),
-                        target: "turnEnd"
-                    },
-                    { // not enough money, solvable by selling property/properties
-                        guard: {
-                            type: "notEnoughMoney",
-                            params: ({context}) => ({nowTurn: context.nowPid})
+
+                            const output = distributePayment(intermediate,100000)
+                            return output
                         },
-                        target: "sellModal"
+                        fund: (_) => 0,
+                        financialWarningCache: (_) => "needFund"
+                    }),
+                    target: "turnEnd"
+                },
+                { // need basic income
+                    guard: {
+                        type: "stillBankrupt",
+                        params: ({context}) => ({nowTurn: context.nowPid})
                     },
-                    { // need fund
-                        guard: {
-                            type: "bankrupt",
-                            params: ({context}) => ({nowTurn: context.nowPid})
+                    actions: assign({
+                        mainStatuses: ({context}) => {
+                            const {
+                                mainStatuses,
+                                ...others
+                            } = context
+                            const intermediate: typeof context = {
+                                mainStatuses: needBasicIncome(context),
+                                ...others
+                            }
+
+                            const output = distributePayment(intermediate,100000)
+                            return output
                         },
-                        actions: assign({
-                            mainStatuses: ({context, event}) => {
-                                return needFund(context)
-                            },
-                            fund: (_) => 0,
-                            financialWarningCache: (_) => "needFund"
-                        }),
-                        target: "turnEnd"
+                        fund: (_) => 0,
+                        financialWarningCache: (_) => "needBasicIncome"
+                    }),
+                    target: "turnEnd"
+                },
+                { // unsolvable => Game ends without any winner
+                    guard: {
+                        type: "unsolvableBankrupt",
+                        params: ({context}) => ({nowTurn: context.nowPid})
                     },
-                    { // need basic income
-                        guard: {
-                            type: "stillBankrupt",
-                            params: ({context}) => ({nowTurn: context.nowPid})
-                        },
-                        actions: assign({
-                            mainStatuses: ({context}) => {
-                                return needBasicIncome(context)
-                            },
-                            fund: (_) => 0,
-                            financialWarningCache: (_) => "needBasicIncome"
-                        }),
-                        target: "turnEnd"
-                    },
-                    { // unsolvable => Game ends without any winner
-                        guard: {
-                            type: "unsolvableBankrupt",
-                            params: ({context}) => ({nowTurn: context.nowPid})
-                        },
-                        actions: assign({
-                            ending: (_) => "hasBankrupt",
-                            financialWarningCache: (_) => null
-                        }),
-                        target: "frozen"
-                    },
-                    { // keep going gameplay
-                        target: "turnEnd"
-                    }
-                ]
-            },
+                    actions: assign({
+                        ending: (_) => "hasBankrupt",
+                        financialWarningCache: (_) => null
+                    }),
+                    target: "frozen"
+                },
+                { // keep going gameplay
+                    target: "turnEnd"
+                }
+            ]
         },
         infraArrived: { //// ** works done
             always: {
@@ -601,6 +648,9 @@ const machine = setup({
         infraPayment: { //// ** works done
             always: [{
                 guard: "notEnoughMoneyForTax",
+                actions: assign({
+                    feeCache: ({context}) => 300000
+                }),
                 target: "taxSellModal"
             },{
                 guard: "needHelpFromFundForTax",
@@ -647,13 +697,16 @@ const machine = setup({
             }
         },
         chanceArrived: { //// ** works done
+            entry: assign({
+                freshChanceCardCache: (_) => randomChance()
+            }),
             always: {
-                actions: assign({
-                    freshChanceCardCache: (_) => randomChance()
-                })
-            },
+                target: "chanceKindNoticeCheck"
+            }
+        },
+        chanceKindNoticeCheck: {
             on: {
-                checkChanceCard: [
+                noticeChecked: [
                     // normal chances
                     { // newborn
                         guard: {
@@ -1000,6 +1053,9 @@ const machine = setup({
                             type: "notEnoughMoneyForChance",
                             params: ({context}) => ({kind: "inheritDonate"})
                         },
+                        actions: assign({
+                            feeCache: (_) => 1000000
+                        }),
                         target: "inheritDonateSellModal"
                     },
                     { // need fund
@@ -1062,6 +1118,9 @@ const machine = setup({
                             type: "notEnoughMoneyForChance",
                             params: ({context}) => ({kind: "cyberSecurityThreat"})
                         },
+                        actions: assign({
+                            feeCache: (_) => 1000000
+                        }),
                         target: "cyberSecurityThreatSellModal"
                     },
                     { // need fund
@@ -1124,6 +1183,9 @@ const machine = setup({
                             type: "notEnoughMoneyForChance",
                             params: ({context}) => ({kind: "fakeNews"})
                         },
+                        actions: assign({
+                            feeCache: (_) => 1000000
+                        }),
                         target: "fakeNewsSellModal"
                     },
                     { // need fund
@@ -1186,6 +1248,9 @@ const machine = setup({
                             type: "notEnoughMoneyForChance",
                             params: ({context}) => ({kind: "voicePhishing"})
                         },
+                        actions: assign({
+                            feeCache: (_) => 1000000
+                        }),
                         target: "voicePhishingSellModal"
                     },
                     { // need fund
@@ -1248,6 +1313,9 @@ const machine = setup({
                             type: "notEnoughMoneyForChance",
                             params: ({context}) => ({kind: "trafficAccident"})
                         },
+                        actions: assign({
+                            feeCache: (_) => 500000
+                        }),
                         target: "trafficAccidentSellModal"
                     },
                     { // need fund
@@ -1483,6 +1551,9 @@ const machine = setup({
         hospitalPayment: { //// ** works done
             always: [{
                 guard: "notEnoughForHospital",
+                actions: assign({
+                    feeCache: (_) => 100000
+                }),
                 target: "hospitalSellModal"
             }, {
                 guard: "needHelpFromFundForHospital",
@@ -1549,12 +1620,37 @@ const machine = setup({
         },
         preLottoModal: { //// ** works done
             on: {
-                startLotto: {
-                    actions: assign({
-                        doubleLotto: ({event}) => event.useDoubleLottoTicket
-                    }),
-                    target: "lottoModal"
-                },
+                startLotto: [
+                    {
+                        guard: ({event}) => event.useDoubleLottoTicket,
+                        actions: assign({
+                            doubleLotto: (_) => true,
+                            mainStatuses({context}) {
+                                let {
+                                    mainStatuses: {players,landProperties, govIncome, cashCache},
+                                    nowPid
+                                } = context
+                                let new_players: typeof players = [...players]
+                                const remaining_doubleLottoTickets = Math.max(0, new_players[nowPid].remaining.tickets.doubleLotto - 1)
+                                new_players[nowPid].remaining.tickets.doubleLotto = remaining_doubleLottoTickets
+                                return {
+                                    players: new_players,
+                                    landProperties,
+                                    govIncome,
+                                    cashCache
+                                }
+                            }
+                        }),
+                        target: "lottoModal"
+                    },
+                    {
+                        guard: ({event}) => !(event.useDoubleLottoTicket),
+                        actions: assign({
+                            doubleLotto: (_) => false
+                        }),
+                        target: "lottoModal"
+                    }
+                ],
                 nop: {
                     target: "turnEnd"
                 }
@@ -1602,12 +1698,14 @@ const machine = setup({
                         lottoCache: (_) => "lost",
                         mainStatuses: ({context}) => payToMarket(context,context.nowPid,200000),
                         fund: ({context}) => context.fund + 200000
-                    })
+                    }),
+                    reenter: true
                 }],
                 stopLotto: {
                     actions: assign({
                         lottoCache: (_) => "won"
-                    })
+                    }),
+                    reenter: true
                 }
             },
             exit: assign({
@@ -1617,12 +1715,14 @@ const machine = setup({
                 guard: "mustStopLotto",
                 actions: assign({
                     lottoCache: (_) => "won"
-                })
+                }),
+                reenter: true
             },{
                 guard: "threeTimesWonLotto",
                 actions: assign({
                     lottoCache: (_) => "won"
-                })
+                }),
+                reenter: true
             }, {
                 guard: {
                     type: "checkLottoFinal",
@@ -1645,14 +1745,14 @@ const machine = setup({
                                 toEarn = 2000000
                                 break;
                         }
-                        return earnMoney(context,toEarn)
+                        const doubler = (context.doubleLotto === true) ? 2 : 1
+                        return earnMoney(context,toEarn * doubler)
                     },
                     lottoCache: (_) => null,
                     dicesSecondary: (_) => null,
-                    lottoTriesCountCache: (_) => 0,
-                    doubleLotto: (_) => null
+                    wonLotto: ({context}) => context.lottoTriesCountCache
                 }),
-                target: "turnEnd"
+                target: "lottoFinalResultNotice"
             }, {
                 guard: {
                     type: "checkLottoFinal",
@@ -1661,11 +1761,22 @@ const machine = setup({
                 actions: assign({
                     lottoCache: (_) => null,
                     dicesSecondary: (_) => null,
-                    lottoTriesCountCache: (_) => 0,
-                    doubleLotto: (_) => null
+                    wonLotto: (_) => 0
                 }),
-                target: "turnEnd"
+                target: "lottoFinalResultNotice"
             }]
+        },
+        lottoFinalResultNotice: {
+            on: {
+                noticeChecked: {
+                    actions: assign({
+                        wonLotto: (_) => null,
+                        doubleLotto: (_) => null,
+                        lottoTriesCountCache: (_) => 0
+                    }),
+                    target: "turnEnd"
+                }
+            }
         },
         universityArrived: { //// ** works done
             always: {
@@ -1754,7 +1865,7 @@ const machine = setup({
                 }
             }
         },
-        trafficAccident: {//// ** works done
+        trafficAccidentSellModal: {//// ** works done
             on: {
                 sell: {
                     actions: assign({
@@ -1770,16 +1881,16 @@ const machine = setup({
                     actions: assign({
                         dicesNow: (_) => randomDices()
                     })
-                },
-                go: {
-                    guard: "dicesSet",
-                    actions: assign({
-                        mainStatuses: ({context}) => {
-                            return go(context)
-                        }
-                    }),
-                    target: "arrivalCheck"
                 }
+            },
+            always: {
+                guard: "dicesSet",
+                actions: assign({
+                    mainStatuses: ({context}) => {
+                        return go(context)
+                    }
+                }),
+                target: "arrivalCheck"
             }
         },
         arrivalCheck: { //// ** works done
@@ -1899,42 +2010,67 @@ const machine = setup({
                 }
             ]
         },
-        jailModal: { //// ** works done
+        jailModal: { 
             on: {
                 showMeTheMONEY: {
                     actions: assign({
                         mainStatuses({context}) {
                             return jailAction(context, "byCash")
-                        }
+                        },
+                        jailTurnResultCache: (_) => "byCash"
                     }),
-                    target: "turnEnd"
+                    target: "jailDicesResultNotice"
+                },
+                thanksToLawyer: {
+                    actions: assign({
+                        mainStatuses({context}) {
+                            return jailAction(context, "byLawyer")
+                        },
+                        jailTurnResultCache: (_) => "byLawyer"
+                    }),
+                    target: "jailDicesResultNotice"
                 },
                 rollDice: {
                     actions: assign({
                         dicesNow: (_) => randomDices()
-                    })
-                },
-                check: [
-                    {
-                        guard: {
-                            type: "dicesDouble"
-                        },
-                        actions: assign({
-                            mainStatuses({context}) {
-                                return jailAction(context, "byDice")
-                            }
-                        }),
-                        target: "turnEnd"
+                    }),
+                    target: "jailDicesCheck"
+                }
+            }
+        },
+        jailDicesCheck: {
+            always: [
+                {
+                    guard: {
+                        type: "dicesDouble"
                     },
-                    {
-                        actions: assign({
-                            mainStatuses({context}) {
-                                return jailAction(context)
-                            }
-                        }),
-                        target: "turnEnd"
-                    }
-                ]
+                    actions: assign({
+                        mainStatuses({context}) {
+                            return jailAction(context, "byDice")
+                        },
+                        jailTurnResultCache: (_) => "byDice"
+                    }),
+                    target: "jailDicesResultNotice"
+                },
+                {
+                    actions: assign({
+                        mainStatuses({context}) {
+                            return jailAction(context)
+                        },
+                        jailTurnResultCache: (_) => false
+                    }),
+                    target: "jailDicesResultNotice"
+                }
+            ]
+        },
+        jailDicesResultNotice: {
+            on: {
+                noticeChecked: {
+                    actions: assign({
+                        jailTurnResultCache: (_) => null
+                    }),
+                    target: "turnEnd"
+                }
             }
         },
         turnEnd: { //// ** works done
@@ -2036,7 +2172,7 @@ const machine = setup({
             on: {
                 pickTargetLocation: {
                     guard({context, event}) {
-                        if (event.targetLocation in BUILDABLE_LOCATIONS) {
+                        if (BUILDABLE_LOCATIONS.includes(event.targetLocation)) {
                             let target = context.mainStatuses.landProperties.get(event.targetLocation as BuildableLocationType)
                             return (target !== undefined) && (target.operatorId === context.nowPid) && (target.amount < 3)
                         } else {
@@ -2175,7 +2311,7 @@ const machine = setup({
                         } = context
                         let getMy = landProperties.get(my)
                         let getOthers = landProperties.get(others)
-                        return (getMy !== undefined) && (getMy.operatorId === context.nowPid) && (getOthers !== undefined) && (getOthers.operatorId !== context.nowPid)
+                        return (getMy !== undefined) && (getMy.operatorId === nowPid) && (getOthers !== undefined) && (getOthers.operatorId !== context.nowPid)
                     },
                     actions: assign({
                         mainStatuses({context, event}) {
@@ -2222,6 +2358,6 @@ const machine = setup({
                     target: "turnEnd"
                 }
             }
-        }
+        },
     }
 })
