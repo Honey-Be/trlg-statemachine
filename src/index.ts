@@ -9,7 +9,7 @@ import { EventType } from './lib/trlg/machine'
 const app = new Hono()
 
 app.use("*", cors({
-  origin: ["https://newsniper.org", "https://*.newsniper.org","http://localhost:4321"],
+  origin: ["https://newsniper.org", "https://debconf24-bof-trlg.vercel.app/", "https://debconf24-bof.newsniper.org","http://localhost:4321"],
   allowMethods: ["GET", "POST"],
   allowHeaders: ["Content-Type", "Authorization"]
 }))
@@ -71,7 +71,7 @@ function attachGrantedSocket(socket: Socket) {
     await onCommand(gameId,{type: "rollDice"} ,socket)
   })
 
-  socket.on("tryLotto", async (choice: TRLG.LottoChoiceType) => {
+  socket.on("tryLotto", async ({choice}: {choice: TRLG.LottoChoiceType}) => {
     await onCommand(gameId,{type: "tryLotto", choice} ,socket)
   })
 
@@ -83,7 +83,7 @@ function attachGrantedSocket(socket: Socket) {
     await onCommand(gameId,{type: "sell", targets} ,socket)
   })
 
-  socket.on("startlotto", async (useDoubleLottoTicket: boolean) => {
+  socket.on("startlotto", async ({useDoubleLottoTicket}: {useDoubleLottoTicket: boolean}) => {
     await onCommand(gameId,{type: "startLotto", useDoubleLottoTicket} ,socket)
   })
 
@@ -91,7 +91,7 @@ function attachGrantedSocket(socket: Socket) {
     await onCommand(gameId,{type: "nop"} ,socket)
   })
 
-  socket.on("purchase", async (amount: number) => {
+  socket.on("purchase", async ({amount}: {amount: number}) => {
     await onCommand(gameId,{type: "purchase", value: {amount}} ,socket)
   })
 
@@ -152,7 +152,7 @@ const server = serve({
 
 const io = new Server(server,{
   cors: {
-    origin: ["https://newsniper.org", "https://*.newsniper.org","http://localhost:4321"],
+    origin: ["https://newsniper.org", "https://debconf24-bof-trlg.vercel.app/", "https://debconf24-bof.newsniper.org","http://localhost:4321"],
     methods: ["GET", "POST"],
     allowedHeaders: ["Content-Type", "Authorization"],
     credentials: true,
