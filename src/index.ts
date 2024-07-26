@@ -52,7 +52,7 @@ function attachGrantedSocket(socket: Socket) {
   const {gameId} = clientInfo
 
   socket.on("pickTargetGroup", async ({targetGroup}: {targetGroup: TRLG.CityGroupType}) => {
-    await onCommand(gameId,{type: "pickTargetGroup", targetGroupId: targetGroup},socket)
+    await onCommand(gameId,{type: "pickTargetGroup", targetGroup: targetGroup},socket)
   })
 
   socket.on("pickTargetLocation", async ({targetLocation}: {targetLocation: number}) => {

@@ -25,7 +25,7 @@ export type EventType = {type: "purchase", value: {amount: number}}
     | {type: "showMeTheMONEY"} //
     | {type: "pickTargetPlayer"} //
     | {type: "pickTargetLocation", targetLocation: number} //
-    | {type: "pickTargetGroup", targetGroupId: CityGroupType} //
+    | {type: "pickTargetGroup", targetGroup: CityGroupType} //
     | {type: "tryLotto", choice: LottoChoiceType} //
     | {type: "stopLotto"} //
     | {type: "useTicket"} // 
@@ -2279,7 +2279,7 @@ export const machine = setup({
                                 govIncome,
                                 cashCache
                             } = context.mainStatuses
-                            const targets = Array.from(_CITY_GROUPS[event.targetGroupId])
+                            const targets = Array.from(_CITY_GROUPS[event.targetGroup])
                             const new_lp = new Map(
                                 Array.from(landProperties.entries())
                                 .map(([loc, status]) => {
